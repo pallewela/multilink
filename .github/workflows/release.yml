@@ -27,9 +27,12 @@ jobs:
       - run: target/MultilinkBar.app/Contents/MacOS/MultilinkBar --selftest
       - name: Package
         run: |
-          zip="MultilinkBar-${GITHUB_REF_NAME#v}-macos.zip"
-          ditto -c -k --keepParent target/MultilinkBar.app "$zip"
-          shasum -a 256 "$zip" > "$zip.sha256"
+          dmg="MultilinkBar-${GITHUB_REF_NAME#v}-macos.dmg"
+          mkdir dmg
+          cp -R target/MultilinkBar.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname MultilinkBar -srcfolder dmg -fs HFS+ -format UDZO "$dmg"
+          shasum -a 256 "$dmg" > "$dmg.sha256"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -37,4 +40,4 @@ jobs:
           flag=""
           case "$GITHUB_REF_NAME" in *-*) flag="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" $flag --generate-notes \
-            --title "$GITHUB_REF_NAME" MultilinkBar-*-macos.zip MultilinkBar-*-macos.zip.sha256
+            --title "$GITHUB_REF_NAME" MultilinkBar-*-macos.dmg MultilinkBar-*-macos.dmg.sha256
