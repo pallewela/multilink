@@ -1,24 +1,24 @@
 #!/bin/sh
-# Build the macOS menu bar app: target/MultilinkBar.app
+# Build the macOS menu bar app: target/Multilink.app
 #
-#   sh scripts/build-macos-bar.sh && open target/MultilinkBar.app
-#   SIGN_IDENTITY="Developer ID Application: ..." sh scripts/build-macos-bar.sh
+#   sh scripts/build-macos-app.sh && open target/Multilink.app
+#   SIGN_IDENTITY="Developer ID Application: ..." sh scripts/build-macos-app.sh
 #
 # Needs: Xcode command line tools (swiftc) and Rust. The multilink library is linked into the
 # app (macos/multilink.h). The app runs as you; its privileged half is the same executable run
-# by launchd as root (`MultilinkBar daemon`, Contents/Library/LaunchDaemons). The first Start
+# by launchd as root (`Multilink daemon`, Contents/Library/LaunchDaemons). The first Start
 # registers it; macOS then asks you to allow it once in System Settings > Login Items.
 # The daemon runs code from this bundle as root, so install the app where only admins can
 # change it (/Applications) before relying on it.
 set -eu
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-APP=target/MultilinkBar.app
+APP=target/Multilink.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Library/LaunchDaemons"
 cargo build --release   # builds the CLI and target/release/libmultilink.a
 rm -f "$APP/Contents/MacOS/multilink"   # older builds bundled a separate binary
 # Frameworks and libraries per `cargo rustc --lib --crate-type staticlib -- --print native-static-libs`.
 swiftc -O -target "$(uname -m)-apple-macos13" -import-objc-header macos/multilink.h \
-    -o "$APP/Contents/MacOS/MultilinkBar" macos/MultilinkBar.swift target/release/libmultilink.a \
+    -o "$APP/Contents/MacOS/Multilink" macos/Multilink.swift target/release/libmultilink.a \
     -framework CoreFoundation -framework SystemConfiguration -framework Foundation -lobjc -liconv
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -26,8 +26,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key><string>com.multilink.bar</string>
-    <key>CFBundleName</key><string>MultilinkBar</string>
-    <key>CFBundleExecutable</key><string>MultilinkBar</string>
+    <key>CFBundleName</key><string>Multilink</string>
+    <key>CFBundleExecutable</key><string>Multilink</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION%%-*}</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
@@ -47,8 +47,8 @@ cat > "$APP/Contents/Library/LaunchDaemons/com.multilink.bar.daemon.plist" <<'EO
 <plist version="1.0">
 <dict>
     <key>Label</key><string>com.multilink.bar.daemon</string>
-    <key>BundleProgram</key><string>Contents/MacOS/MultilinkBar</string>
-    <key>ProgramArguments</key><array><string>MultilinkBar</string><string>daemon</string></array>
+    <key>BundleProgram</key><string>Contents/MacOS/Multilink</string>
+    <key>ProgramArguments</key><array><string>Multilink</string><string>daemon</string></array>
     <key>MachServices</key><dict><key>com.multilink.bar.daemon</key><true/></dict>
     <key>AssociatedBundleIdentifiers</key><array><string>com.multilink.bar</string></array>
 </dict>

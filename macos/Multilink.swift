@@ -1,23 +1,23 @@
-// MultilinkBar: a macOS menu bar app showing multilink's state.
+// Multilink: a macOS menu bar app showing multilink's state.
 // Polls multilink's status JSON every second; the icon's shape gives the overall state
 // and the menu lists each link.
 //
 // Control goes through a privileged daemon, never HTTP: the same executable run by launchd as
-// root (`MultilinkBar daemon`, registered once with SMAppService and approved in System
+// root (`Multilink daemon`, registered once with SMAppService and approved in System
 // Settings). The app talks to it over XPC, and each side only accepts a peer whose code has
 // the same cdhash as its own, so only this exact build can drive the root process. The daemon
 // runs the multilink library (macos/multilink.h) in-process; the GUI never runs as root.
 // The daemon stops the balancer when the app's connection goes away (quit, crash, force quit).
-// Build with scripts/build-macos-bar.sh.
+// Build with scripts/build-macos-app.sh.
 //
 // Settings (defaults write com.multilink.bar <key> <value>):
 //   statusURL     default http://127.0.0.1:7878
-//   configPath    multilink TOML config, default ~/Library/Application Support/MultilinkBar/multilink.toml
+//   configPath    multilink TOML config, default ~/Library/Application Support/Multilink/multilink.toml
 //   startOnLaunch YES = start the balancer when the app launches (if none is running)
 // The Settings submenu edits startOnLaunch, the policy line of the config, or opens the config.
 // Config changes apply while running; settings that need a restart offer one.
-// `MultilinkBar --print` fetches once, prints the menu text and exits.
-// `MultilinkBar --selftest` runs the built-in checks and exits.
+// `Multilink --print` fetches once, prints the menu text and exits.
+// `Multilink --selftest` runs the built-in checks and exits.
 import AppKit
 import ServiceManagement
 
@@ -241,7 +241,7 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case (true, false): add("Starting…", nil)
         case (true, true): add("Stop Balancer", #selector(stopBalancer))
         case (false, false): add("Start Balancer", #selector(startBalancer))
-        case (false, true): add("Started outside MultilinkBar", nil)
+        case (false, true): add("Started outside Multilink", nil)
         }
         if restartOffered, let needsRestart { add("Restart Balancer to Apply \(needsRestart)", #selector(restartBalancer)) }
         if let lastError { add(lastError, nil) }
@@ -252,7 +252,7 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         open.target = self
         open.isEnabled = status != nil
         menu.addItem(open)
-        let quit = NSMenuItem(title: "Quit MultilinkBar", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit Multilink", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
     }
@@ -374,11 +374,11 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try service.register()
                 return nil
             } catch where service.status != .requiresApproval {
-                return "Couldn't install the MultilinkBar service: \(error.localizedDescription)"
+                return "Couldn't install the Multilink service: \(error.localizedDescription)"
             } catch {}
         }
         SMAppService.openSystemSettingsLoginItems()
-        return "Allow MultilinkBar in System Settings › Login Items, then Start again"
+        return "Allow Multilink in System Settings › Login Items, then Start again"
     }
 
     /// Send the config to the running balancer: policy, weights and pins apply at once.
@@ -493,11 +493,11 @@ final class DaemonClient: NSObject, AppCalls {
 
     private func call(_ failed: @escaping @MainActor (String) -> Void, _ body: (DaemonCalls) -> Void) {
         guard let requirement = sameCodeRequirement() else {
-            return failed("MultilinkBar is not code signed")
+            return failed("Multilink is not code signed")
         }
         let c = connection ?? connect(requirement)
         let proxy = c.remoteObjectProxyWithErrorHandler { error in
-            Task { @MainActor in failed("can't reach the MultilinkBar service (\(error.localizedDescription))") }
+            Task { @MainActor in failed("can't reach the Multilink service (\(error.localizedDescription))") }
         }
         guard let daemon = proxy as? DaemonCalls else { return failed("bad XPC interface") }
         body(daemon)
@@ -648,7 +648,7 @@ func runDaemon() -> Never {
         close(fd)
     }
     guard let requirement = sameCodeRequirement() else {
-        log("MultilinkBar is not code signed: refusing every connection")
+        log("Multilink is not code signed: refusing every connection")
         exit(1)
     }
     let daemon = Daemon(requirement: requirement)
@@ -664,7 +664,7 @@ func runDaemon() -> Never {
 
 enum Paths {
     static let home = FileManager.default.homeDirectoryForCurrentUser
-    static let support = home.appending(path: "Library/Application Support/MultilinkBar")
+    static let support = home.appending(path: "Library/Application Support/Multilink")
     /// Written by the daemon as root.
     static let log = URL(fileURLWithPath: "/var/log/multilink.log")
     static var config: URL {
@@ -702,8 +702,8 @@ func ensureConfig() throws {
 }
 
 let configTemplate = """
-# multilink settings used by MultilinkBar. Saving applies policy, weights and pins to new
-# connections at once; MultilinkBar offers a restart for the others.
+# multilink settings used by the Multilink menu bar app. Saving applies policy, weights and
+# pins to new connections at once; the app offers a restart for the others.
 # Every option is described in multilink.example.toml in the multilink repository.
 
 # sticky: a destination keeps its link (logins tied to an IP survive)
@@ -770,7 +770,7 @@ if CommandLine.arguments.contains("--selftest") {
     precondition(withPolicy("probe = \"x\"\n", "round-robin") == "policy = \"round-robin\"\nprobe = \"x\"\n")
     precondition(configPolicy(configTemplate) == "sticky")
     // The embedded library checks configs.
-    let tmp = FileManager.default.temporaryDirectory.appending(path: "multilinkbar-selftest.toml")
+    let tmp = FileManager.default.temporaryDirectory.appending(path: "multilink-selftest.toml")
     try! "polcy = \"x\"\n".write(to: tmp, atomically: true, encoding: .utf8)
     precondition(checkConfig(tmp.path)?.contains("unknown field `polcy`") == true, "\(String(describing: checkConfig(tmp.path)))")
     try! configTemplate.write(to: tmp, atomically: true, encoding: .utf8)
@@ -838,9 +838,12 @@ if CommandLine.arguments.contains("--print") {
 // Root is the daemon's job. A GUI running as root (say, through an old sudoers rule) would
 // hand root to everything it opens.
 guard getuid() != 0 else {
-    FileHandle.standardError.write(Data("MultilinkBar must not run as root\n".utf8))
+    FileHandle.standardError.write(Data("Multilink must not run as root\n".utf8))
     exit(1)
 }
+
+// Builds named MultilinkBar kept their files here; never overwrites an existing folder.
+try? FileManager.default.moveItem(at: Paths.home.appending(path: "Library/Application Support/MultilinkBar"), to: Paths.support)
 
 // Top-level code runs on the main thread.
 MainActor.assumeIsolated {
