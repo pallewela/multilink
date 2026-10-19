@@ -253,6 +253,7 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         open.target = self
         open.isEnabled = status != nil
         menu.addItem(open)
+        add("Version \(appVersion)", nil)
         let quit = NSMenuItem(title: "Quit Multilink", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -664,6 +665,8 @@ func log(_ text: String) {
     fflush(stdout)
 }
 
+let appVersion = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+
 /// Run as the daemon (root, started by launchd through the app's SMAppService registration).
 func runDaemon() -> Never {
     guard getuid() == 0 else {
@@ -677,6 +680,7 @@ func runDaemon() -> Never {
         dup2(fd, STDERR_FILENO)
         close(fd)
     }
+    log("Multilink service \(appVersion) started")
     guard let requirement = sameCodeRequirement() else {
         log("Multilink is not code signed: refusing every connection")
         exit(1)
@@ -884,7 +888,7 @@ if appLog >= 0 {
     dup2(appLog, STDERR_FILENO)
     close(appLog)
 }
-log("Multilink \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?") started")
+log("Multilink \(appVersion) started")
 
 // Top-level code runs on the main thread.
 MainActor.assumeIsolated {
