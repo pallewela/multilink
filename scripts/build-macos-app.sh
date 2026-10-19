@@ -13,7 +13,7 @@
 set -eu
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 APP=target/Multilink.app
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Library/LaunchDaemons"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchDaemons"
 cargo build --release   # builds the CLI and target/release/libmultilink.a
 rm -f "$APP/Contents/MacOS/multilink"   # older builds bundled a separate binary
 rm -f "$APP/Contents/Library/LaunchDaemons/com.multilink.bar.daemon.plist"   # old label
@@ -21,6 +21,15 @@ rm -f "$APP/Contents/Library/LaunchDaemons/com.multilink.bar.daemon.plist"   # o
 swiftc -O -target "$(uname -m)-apple-macos13" -import-objc-header macos/multilink.h \
     -o "$APP/Contents/MacOS/Multilink" macos/Multilink.swift target/release/libmultilink.a \
     -framework CoreFoundation -framework SystemConfiguration -framework Foundation -lobjc -liconv
+# App icon, drawn by macos/icon.swift and scaled to every size an .icns holds.
+ICONSET=target/AppIcon.iconset
+rm -rf "$ICONSET" && mkdir -p "$ICONSET"
+swift macos/icon.swift "$ICONSET/icon_512x512@2x.png"
+for s in 16 32 128 256 512; do
+    sips -z $s $s "$ICONSET/icon_512x512@2x.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+    [ $s = 512 ] || sips -z $((s * 2)) $((s * 2)) "$ICONSET/icon_512x512@2x.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -30,6 +39,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleName</key><string>Multilink</string>
     <key>CFBundleExecutable</key><string>Multilink</string>
     <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleShortVersionString</key><string>${VERSION%%-*}</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
