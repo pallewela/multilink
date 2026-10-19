@@ -26,6 +26,7 @@ jobs:
       - run: sh scripts/build-macos-app.sh
       - run: target/Multilink.app/Contents/MacOS/Multilink --selftest
       - name: Package
+        id: package
         run: |
           dmg="Multilink-${GITHUB_REF_NAME#v}-macos.dmg"
           mkdir dmg
@@ -33,6 +34,7 @@ jobs:
           ln -s /Applications dmg/Applications
           hdiutil create -volname Multilink -srcfolder dmg -fs HFS+ -format UDZO "$dmg"
           shasum -a 256 "$dmg" > "$dmg.sha256"
+          echo "sha256=$(cut -d" " -f1 "$dmg.sha256")" >> "$GITHUB_OUTPUT"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,3 +43,11 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) flag="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" $flag --generate-notes \
             --title "$GITHUB_REF_NAME" Multilink-*-macos.dmg Multilink-*-macos.dmg.sha256
+      - name: Bump Homebrew tap cask
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
+        with:
+          token: ${{ secrets.TAP_REPO_TOKEN }}
+          repository: pallewela/homebrew-tap
+          event-type: multilink-release
+          client-payload: |
+            {"tag": "${{ github.ref_name }}", "sha256": "${{ steps.package.outputs.sha256 }}"}
