@@ -16,7 +16,7 @@ APP=target/Multilink.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchDaemons"
 cargo build --release   # builds the CLI and target/release/libmultilink.a
 rm -f "$APP/Contents/MacOS/multilink"   # older builds bundled a separate binary
-rm -f "$APP/Contents/Library/LaunchDaemons/com.multilink.bar.daemon.plist"   # old label
+rm -f "$APP/Contents/Library/LaunchDaemons/"*.plist   # older labels
 # Frameworks and libraries per `cargo rustc --lib --crate-type staticlib -- --print native-static-libs`.
 swiftc -O -target "$(uname -m)-apple-macos13" -import-objc-header macos/multilink.h \
     -o "$APP/Contents/MacOS/Multilink" macos/Multilink.swift target/release/libmultilink.a \
@@ -51,16 +51,18 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
-# Started on demand when the app connects; the daemon exits again when idle.
-cat > "$APP/Contents/Library/LaunchDaemons/com.multilink.helper.plist" <<'EOF'
+# Started on demand when the app connects; the daemon exits again when idle. The label carries
+# the version: macOS pins a label's background item to the build that first registered it.
+LABEL=com.multilink.helper.$VERSION
+cat > "$APP/Contents/Library/LaunchDaemons/$LABEL.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key><string>com.multilink.helper</string>
+    <key>Label</key><string>$LABEL</string>
     <key>BundleProgram</key><string>Contents/MacOS/Multilink</string>
     <key>ProgramArguments</key><array><string>Multilink</string><string>daemon</string></array>
-    <key>MachServices</key><dict><key>com.multilink.helper</key><true/></dict>
+    <key>MachServices</key><dict><key>$LABEL</key><true/></dict>
     <key>AssociatedBundleIdentifiers</key><array><string>com.multilink.bar</string></array>
 </dict>
 </plist>
