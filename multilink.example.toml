@@ -1,0 +1,31 @@
+# multilink config. Use with: sudo multilink run --config multilink.toml
+# Every setting is optional. Command-line flags override this file.
+
+# sticky (default): a destination keeps using the same link, so IP-bound logins survive.
+# round-robin:      each new connection goes to the next link.
+# least-latency:    everything goes to the fastest healthy link; the others are standby.
+policy = "sticky"
+
+# Health check: TCP connect to this address through each link every 2 seconds.
+probe = "1.1.1.1:443"
+
+# Live status page (open it in a browser while multilink runs). "off" disables it.
+status = "127.0.0.1:7878"
+
+# Use exactly these interfaces instead of auto-detecting.
+# links = ["en0", "en9"]
+
+# When auto-detecting, never use these.
+exclude = ["bridge0"]
+
+# Sticky only: relative share of destinations per link. Unlisted links weigh 1.
+# Here Wi-Fi gets about three quarters of new destinations.
+[weights]
+en0 = 3
+en9 = 1
+
+# Prefer a link for a destination range while that link is healthy; if it is down,
+# the normal policy applies. The most specific matching range wins.
+[[pin]]
+dst = "17.0.0.0/8"     # Apple
+link = "en0"

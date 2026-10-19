@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>multilink status</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f4f4f2;
+  --surface-1: #fcfcfb;
+  --border: #e2e1dc;
+  --grid: #ebeae6;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #77766f;
+  --good: #0ca30c;
+  --critical: #d03b3b;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #111110;
+    --surface-1: #1a1a19;
+    --border: #2e2e2c;
+    --grid: #262624;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #94938a;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--text-primary);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 20px; }
+h1 { font-size: 20px; margin: 0; font-weight: 600; }
+h2 { font-size: 15px; margin: 0 0 4px; font-weight: 600; }
+.meta { color: var(--text-secondary); }
+.banner {
+  display: none; margin-bottom: 16px; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid var(--critical); color: var(--text-primary); background: var(--surface-1);
+}
+.banner.show { display: block; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.card, .panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.name { font-weight: 600; font-size: 15px; }
+.state { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-secondary); }
+.dot { width: 9px; height: 9px; border-radius: 50%; }
+.rates { display: flex; gap: 20px; margin-bottom: 8px; }
+.rate b { display: block; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rate span, dt { color: var(--text-muted); font-size: 12px; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
+dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.panel { margin-bottom: 12px; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--text-secondary); font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 200px; overflow: visible; }
+.chart text { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .label { font-size: 12px; fill: var(--text-secondary); }
+.tip {
+  position: absolute; pointer-events: none; display: none; min-width: 140px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.12); font-size: 12px;
+}
+.tip div { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.tip .t { color: var(--text-muted); margin-bottom: 4px; }
+.tip .v { margin-left: auto; padding-left: 12px; color: var(--text-primary); }
+button {
+  font: inherit; color: var(--text-secondary); background: none; border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+button:hover { color: var(--text-primary); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-muted); font-weight: 500; font-size: 12px; }
+#table { display: none; }
+#table.show { display: block; }
+.empty { color: var(--text-muted); padding: 24px 0; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>multilink</h1>
+    <span class="meta" id="meta">connecting…</span>
+  </header>
+  <div class="banner" id="banner" role="status">Not connected to multilink. Retrying every second.</div>
+  <section class="cards" id="cards" aria-label="Links"></section>
+
+  <section class="panel" aria-labelledby="down-title">
+    <div class="panel-head">
+      <h2 id="down-title">Download rate</h2>
+      <div class="legend" id="legend-down"></div>
+    </div>
+    <div class="chart" id="chart-down"></div>
+  </section>
+  <section class="panel" aria-labelledby="up-title">
+    <div class="panel-head">
+      <h2 id="up-title">Upload rate</h2>
+      <div class="legend" id="legend-up"></div>
+    </div>
+    <div class="chart" id="chart-up"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Last 2 minutes</h2>
+      <button id="toggle" aria-expanded="false" aria-controls="table">Show as table</button>
+    </div>
+    <div id="table"></div>
+  </section>
+</main>
+<script>
+"use strict";
+const WINDOW = 120;          // samples kept, one per second
+const history = new Map();   // link name -> [{t, down, up}] rates in bytes/s
+const colorOf = new Map();   // link name -> series slot, fixed in order of first appearance
+let last = null;             // previous /api/status sample, for deltas
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+function human(b) {
+  if (b >= 1e9) return (b / 1e9).toFixed(1) + " GB";
+  if (b >= 1e6) return (b / 1e6).toFixed(1) + " MB";
+  if (b >= 1e3) return (b / 1e3).toFixed(0) + " kB";
+  return b.toFixed(0) + " B";
+}
+const rate = b => human(b) + "/s";
+function series(name) {
+  if (!colorOf.has(name)) colorOf.set(name, colorOf.size + 1);
+  const slot = colorOf.get(name);
+  return slot <= 8 ? `var(--series-${slot})` : "var(--text-muted)";
+}
+function uptime(s) {
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
+}
+
+async function poll() {
+  let st;
+  try {
+    const r = await fetch("/api/status", {cache: "no-store"});
+    st = await r.json();
+    $("banner").classList.remove("show");
+  } catch {
+    $("banner").classList.add("show");
+    return;
+  }
+  const now = performance.now() / 1000;
+  for (const l of st.links) {
+    const prev = last && last.links.find(p => p.name === l.name);
+    const h = history.get(l.name) || [];
+    if (prev && l.bytes_down >= prev.bytes_down && l.bytes_up >= prev.bytes_up) {
+      const dt = Math.max(now - last.at, 0.001);
+      h.push({t: Date.now(), down: (l.bytes_down - prev.bytes_down) / dt, up: (l.bytes_up - prev.bytes_up) / dt});
+    } else if (prev) {
+      h.length = 0;  // counters went backwards: multilink restarted
+    }
+    while (h.length > WINDOW) h.shift();
+    history.set(l.name, h);
+    series(l.name);
+  }
+  last = {at: now, links: st.links};
+  $("meta").textContent = `policy ${st.policy} · up ${uptime(st.uptime_s)}`;
+  renderCards(st.links);
+  for (const dir of ["down", "up"]) renderChart(dir, st.links);
+  renderTable(st.links);
+}
+
+function current(name) {
+  const h = history.get(name) || [];
+  return h.length ? h[h.length - 1] : {down: 0, up: 0};
+}
+
+function renderCards(links) {
+  if (!links.length) { $("cards").innerHTML = `<p class="empty">No links detected.</p>`; return; }
+  $("cards").innerHTML = links.map(l => {
+    const [color, label] = !l.present ? ["var(--text-muted)", "Gone"] : l.up ? ["var(--good)", "Up"] : ["var(--critical)", "Down"];
+    const icon = l.up && l.present ? "✓" : "✕";
+    const c = current(l.name);
+    return `<article class="card">
+      <div class="card-head">
+        <span class="swatch" style="background:${series(l.name)}"></span>
+        <span class="name">${esc(l.name)}</span>
+        <span class="state"><span class="dot" style="background:${color}"></span>${icon} ${label}</span>
+      </div>
+      <div class="rates">
+        <div class="rate"><span>Download</span><b>${rate(c.down)}</b></div>
+        <div class="rate"><span>Upload</span><b>${rate(c.up)}</b></div>
+      </div>
+      <dl>
+        <dt>Latency</dt><dd>${l.rtt_ms == null ? "–" : l.rtt_ms.toFixed(0) + " ms"}</dd>
+        <dt>Flows</dt><dd>${l.active} active · ${l.flows} total</dd>
+        <dt>Transferred</dt><dd>${human(l.bytes_down)} down · ${human(l.bytes_up)} up</dd>
+        <dt>Address</dt><dd>${esc(l.ipv4 || "–")}${l.gateway ? " via " + esc(l.gateway) : ""}</dd>
+      </dl>
+    </article>`;
+  }).join("");
+}
+
+// One line per link, shared y scale from 0, 2-minute x window ending now.
+function renderChart(dir, links) {
+  const box = $("chart-" + dir);
+  const names = links.map(l => l.name);
+  $("legend-" + dir).innerHTML = names.length > 1
+    ? names.map(n => `<span><span class="swatch" style="background:${series(n)}"></span>${esc(n)}</span>`).join("")
+    : "";
+  const W = Math.max(box.clientWidth, 300), H = 200, L = 64, R = 56, T = 8, B = 22;
+  const tEnd = Date.now(), tStart = tEnd - WINDOW * 1000;
+  let max = 0;
+  for (const n of names) for (const p of history.get(n) || []) max = Math.max(max, p[dir]);
+  const yMax = niceMax(max);
+  const x = t => L + (t - tStart) / (tEnd - tStart) * (W - L - R);
+  const y = v => T + (1 - v / yMax) * (H - T - B);
+  let svg = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = yMax * i / 4, yy = y(v);
+    svg += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--grid)" stroke-width="1"/>`;
+    svg += `<text x="${L - 8}" y="${yy + 4}" text-anchor="end">${rate(v)}</text>`;
+  }
+  for (const s of [120, 90, 60, 30, 0]) {
+    const anchor = s === 120 ? "start" : s === 0 ? "end" : "middle";
+    svg += `<text x="${x(tEnd - s * 1000)}" y="${H - 4}" text-anchor="${anchor}">${s ? "-" + s + "s" : "now"}</text>`;
+  }
+  const ends = [];
+  for (const n of names) {
+    const pts = (history.get(n) || []).filter(p => p.t >= tStart);
+    if (!pts.length) continue;
+    const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p[dir]).toFixed(1)}`).join("");
+    svg += `<path d="${d}" fill="none" stroke="${series(n)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const lastPt = pts[pts.length - 1];
+    ends.push({n, y: y(lastPt[dir])});
+  }
+  // Direct labels at the line ends, nudged apart (14px) and kept inside the plot area.
+  ends.sort((a, b) => b.y - a.y);
+  for (let i = 0; i < ends.length; i++) {
+    const floor = i ? ends[i - 1].y - 14 : H - B - 6;
+    ends[i].y = Math.max(T + 6, Math.min(ends[i].y, floor));
+  }
+  for (const e of ends) svg += `<text class="label" x="${W - R + 6}" y="${e.y + 4}">${esc(e.n)}</text>`;
+  svg += `<line id="xh-${dir}" y1="${T}" y2="${H - B}" stroke="var(--text-muted)" stroke-width="1" visibility="hidden"/>`;
+  svg += `<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${dir === "down" ? "Download" : "Upload"} rate per link, last 2 minutes">${svg}</svg><div class="tip"></div>`;
+  hover(box, dir, names, x, tStart, tEnd, L, W - R);
+}
+
+// Top of the y axis: 4 equal steps of 1, 2 or 5 x 10^n, so every tick is a round number.
+function niceMax(v) {
+  if (v <= 0) return 4000;
+  const raw = v / 4, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 5, 10]) if (raw <= m * mag) return 4 * m * mag;
+}
+
+// Crosshair + tooltip: nearest sample of every link at the hovered time.
+function hover(box, dir, names, x, tStart, tEnd, left, right) {
+  const svg = box.querySelector("svg"), tip = box.querySelector(".tip"), xh = box.querySelector(`#xh-${dir}`);
+  svg.addEventListener("mousemove", ev => {
+    const rect = svg.getBoundingClientRect();
+    const px = (ev.clientX - rect.left) * (svg.viewBox.baseVal.width / rect.width);
+    if (px < left || px > right) { xh.setAttribute("visibility", "hidden"); tip.style.display = "none"; return; }
+    const t = tStart + (px - left) / (right - left) * (tEnd - tStart);
+    const rows = names.map(n => {
+      const h = history.get(n) || [];
+      let best = null;
+      for (const p of h) if (!best || Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+      return best && Math.abs(best.t - t) < 2000 ? {n, v: best[dir], t: best.t} : null;
+    }).filter(Boolean);
+    if (!rows.length) { xh.setAttribute("visibility", "hidden"); tip.style.display = "none"; return; }
+    const xx = x(rows[0].t);
+    xh.setAttribute("x1", xx); xh.setAttribute("x2", xx); xh.setAttribute("visibility", "visible");
+    const ago = Math.round((Date.now() - rows[0].t) / 1000);
+    tip.innerHTML = `<div class="t">${ago ? ago + " s ago" : "now"}</div>` +
+      rows.map(r => `<div><span class="swatch" style="background:${series(r.n)}"></span>${esc(r.n)}<span class="v">${rate(r.v)}</span></div>`).join("");
+    tip.style.display = "block";
+    const tipX = (xx / svg.viewBox.baseVal.width) * rect.width;
+    tip.style.left = Math.min(tipX + 12, rect.width - tip.offsetWidth) + "px";
+    tip.style.top = "8px";
+  });
+  svg.addEventListener("mouseleave", () => { xh.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
+}
+
+function renderTable(links) {
+  const rows = links.map(l => {
+    const h = history.get(l.name) || [];
+    const avg = k => h.length ? h.reduce((s, p) => s + p[k], 0) / h.length : 0;
+    const peak = k => h.reduce((m, p) => Math.max(m, p[k]), 0);
+    const c = current(l.name);
+    return `<tr><td>${esc(l.name)}</td><td>${rate(c.down)}</td><td>${rate(avg("down"))}</td><td>${rate(peak("down"))}</td>` +
+      `<td>${rate(c.up)}</td><td>${rate(avg("up"))}</td><td>${rate(peak("up"))}</td></tr>`;
+  }).join("");
+  $("table").innerHTML = `<table><thead><tr><th>Link</th><th>Down now</th><th>Down avg</th><th>Down peak</th>` +
+    `<th>Up now</th><th>Up avg</th><th>Up peak</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+$("toggle").addEventListener("click", () => {
+  const show = $("table").classList.toggle("show");
+  $("toggle").textContent = show ? "Hide table" : "Show as table";
+  $("toggle").setAttribute("aria-expanded", show);
+});
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

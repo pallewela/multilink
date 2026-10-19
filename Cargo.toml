@@ -1,0 +1,28 @@
+[package]
+name = "multilink"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+clap = { version = "4.6.7", features = ["derive"] }
+ipnet = { version = "2.12.2", features = ["serde"] }
+ipstack = "1.0.1"
+netdev = "0.46.3"
+route_manager = "0.2.16"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+socket2 = { version = "0.6.5", features = ["all"] }
+tokio = { version = "1.53.3", features = ["full"] }
+toml = "1.1.8"
+tun-rs = { version = "2.8.13", features = ["async_tokio"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
+
+[target."cfg(unix)".dependencies]
+libc = "0.2.191"
+
+# rlib for the CLI and Rust users; staticlib for embedding (the macOS menu bar app links it).
+[lib]
+crate-type = ["rlib", "staticlib"]
