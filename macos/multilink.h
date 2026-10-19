@@ -1,4 +1,4 @@
-// C interface of the multilink library (src/ffi.rs), linked statically into MultilinkBar.
+// C interface of the multilink library (src/ffi.rs), linked statically into Multilink.app.
 // Strings returned through `char **` or as `char *` are freed with multilink_free_string.
 #ifndef MULTILINK_H
 #define MULTILINK_H

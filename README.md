@@ -50,24 +50,24 @@ relay server, and that's out of scope. IPv6 and ICMP (ping) are not balanced yet
 
 Requires macOS 13 or later on Apple silicon.
 
-1. Download `MultilinkBar-<version>-macos.dmg` from
+1. Download `Multilink-<version>-macos.dmg` from
    [Releases](https://github.com/pallewela/multilink/releases) and check it against the
    `.sha256` file:
 
    ```sh
-   shasum -a 256 -c MultilinkBar-*-macos.dmg.sha256
+   shasum -a 256 -c Multilink-*-macos.dmg.sha256
    ```
 
-2. Open the DMG and drag **MultilinkBar** into **Applications**. Install it there: the app
+2. Open the DMG and drag **Multilink** into **Applications**. Install it there: the app
    runs a root helper from its own bundle, so it must live where only admins can change it.
 3. The alpha isn't notarized yet, so macOS will refuse to open it. Clear the quarantine flag
    once:
 
    ```sh
-   xattr -dr com.apple.quarantine /Applications/MultilinkBar.app
+   xattr -dr com.apple.quarantine /Applications/Multilink.app
    ```
 
-4. Open MultilinkBar. It lives in the menu bar. Choose **Start Balancer**, then allow the helper once in
+4. Open Multilink. It lives in the menu bar. Choose **Start Balancer**, then allow the helper once in
    **System Settings > General > Login Items**.
 
 ## 💻 Command line
@@ -96,7 +96,7 @@ You need stable Rust, plus the Xcode command line tools for the macOS app.
 
 ```sh
 cargo build --release            # CLI: target/release/multilink
-sh scripts/build-macos-bar.sh    # menu bar app: target/MultilinkBar.app
+sh scripts/build-macos-app.sh    # menu bar app: target/Multilink.app
 sh scripts/build-linux.sh        # Linux bundle
 sh scripts/build-windows.sh      # Windows (or scripts/build-windows.ps1)
 ```

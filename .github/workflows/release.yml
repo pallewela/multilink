@@ -23,15 +23,15 @@ jobs:
       - run: rustup update stable --no-self-update
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo test
-      - run: sh scripts/build-macos-bar.sh
-      - run: target/MultilinkBar.app/Contents/MacOS/MultilinkBar --selftest
+      - run: sh scripts/build-macos-app.sh
+      - run: target/Multilink.app/Contents/MacOS/Multilink --selftest
       - name: Package
         run: |
-          dmg="MultilinkBar-${GITHUB_REF_NAME#v}-macos.dmg"
+          dmg="Multilink-${GITHUB_REF_NAME#v}-macos.dmg"
           mkdir dmg
-          cp -R target/MultilinkBar.app dmg/
+          cp -R target/Multilink.app dmg/
           ln -s /Applications dmg/Applications
-          hdiutil create -volname MultilinkBar -srcfolder dmg -fs HFS+ -format UDZO "$dmg"
+          hdiutil create -volname Multilink -srcfolder dmg -fs HFS+ -format UDZO "$dmg"
           shasum -a 256 "$dmg" > "$dmg.sha256"
       - name: Publish
         env:
@@ -40,4 +40,4 @@ jobs:
           flag=""
           case "$GITHUB_REF_NAME" in *-*) flag="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" $flag --generate-notes \
-            --title "$GITHUB_REF_NAME" MultilinkBar-*-macos.dmg MultilinkBar-*-macos.dmg.sha256
+            --title "$GITHUB_REF_NAME" Multilink-*-macos.dmg Multilink-*-macos.dmg.sha256

@@ -49,8 +49,8 @@ jobs:
       - run: rustup update stable --no-self-update
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo test
-      - run: sh scripts/build-macos-bar.sh
-      - run: target/MultilinkBar.app/Contents/MacOS/MultilinkBar --selftest
+      - run: sh scripts/build-macos-app.sh
+      - run: target/Multilink.app/Contents/MacOS/Multilink --selftest
 
   # Compile check only: running needs admin and wintun.dll.
   windows:
