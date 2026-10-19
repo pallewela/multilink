@@ -384,13 +384,27 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         changed()
     }
 
-    /// Register the daemon on first use. nil when it can be reached, else what the user must do.
+    /// Register the daemon on first use, and again after an update. nil when it can be
+    /// reached, else what the user must do.
     func daemonReady() -> String? {
         let service = SMAppService.daemon(plistName: daemonPlist)
         log("Multilink service status: \(service.status.rawValue)")
+        // macOS pins a registered daemon to the build that registered it. Without a Team ID
+        // an updated app's daemon then fails to launch (EX_CONFIG) while status still says
+        // enabled, so a registration made by another build is replaced.
+        let build = sameCodeRequirement()
+        if service.status != .notRegistered, let build, UserDefaults.standard.string(forKey: registeredByKey) != build {
+            log("the Multilink service was registered by another build: registering it again")
+            do {
+                try service.unregister()
+            } catch {
+                log("couldn't unregister the old Multilink service: \(error.localizedDescription)")
+            }
+        }
         if service.status == .enabled { return nil }
         if service.status != .requiresApproval {
             do {
+                UserDefaults.standard.set(build, forKey: registeredByKey)
                 try service.register()
                 return nil
             } catch where service.status != .requiresApproval
@@ -458,6 +472,8 @@ struct Problem: Error {
 // builds (old executable path), so it could never spawn the renamed app.
 let daemonLabel = "com.multilink.helper"
 let daemonPlist = daemonLabel + ".plist"
+/// UserDefaults key: the code requirement of the build that last registered the daemon.
+let registeredByKey = "daemonRegisteredBy"
 
 /// What the app may ask the daemon. Arguments are plain data that the daemon checks itself.
 @objc protocol DaemonCalls {
