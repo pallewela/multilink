@@ -1,4 +1,4 @@
-# multilink
+# 🔀 multilink
 
 **Use all your internet connections at once.**
 
@@ -10,23 +10,23 @@ noticing.
 No proxy settings, no per-app setup, no server to rent. Start it, and everything on the
 machine goes faster.
 
-> **Alpha.** It works on the author's desk; it may not work on yours yet. Bug reports are
+> 🧪 **Alpha.** It works on the author's desk; it may not work on yours yet. Bug reports are
 > very welcome. The first release is macOS only.
 
-## Why
+## ✨ Why
 
-- **More bandwidth.** Downloads, updates, video calls and browser tabs open many connections.
+- 🚀 **More bandwidth.** Downloads, updates, video calls and browser tabs open many connections.
   Spread over two links, they get roughly the bandwidth of both.
-- **Failover.** Each link is health-checked every two seconds. A dead link stops getting new
+- 🛟 **Failover.** Each link is health-checked every two seconds. A dead link stops getting new
   connections; existing ones on healthy links are untouched.
-- **Logins stay put.** The default `sticky` policy keeps each destination on the same link,
+- 📌 **Logins stay put.** The default `sticky` policy keeps each destination on the same link,
   so sites that tie your session to an IP address don't log you out.
-- **You stay in control.** Weight links ("Wi-Fi gets three quarters"), pin address ranges to a
+- 🎛️ **You stay in control.** Weight links ("Wi-Fi gets three quarters"), pin address ranges to a
   link, or exclude interfaces entirely.
-- **See what's happening.** A live status page at <http://127.0.0.1:7878> shows every link,
+- 📊 **See what's happening.** A live status page at <http://127.0.0.1:7878> shows every link,
   whether it's healthy, and live download and upload rates.
 
-## How it works
+## ⚙️ How it works
 
 ```
  apps ──► OS routing ──► TUN device ──► userspace TCP/UDP stack
@@ -42,11 +42,11 @@ a virtual network device. A userspace network stack turns packets back into conn
 each new connection is dialed out through a socket bound to the chosen link. The routes are
 removed when multilink stops.
 
-**What it isn't:** bonding. A single TCP stream, like one large file download over one
+⚠️ **What it isn't:** bonding. A single TCP stream, like one large file download over one
 connection, is still capped by the link it lands on. Combining one stream across links needs a
 relay server, and that's out of scope. IPv6 and ICMP (ping) are not balanced yet.
 
-## Install on macOS
+## 🍎 Install on macOS
 
 Requires macOS 13 or later on Apple silicon.
 
@@ -70,7 +70,7 @@ Requires macOS 13 or later on Apple silicon.
 4. Open MultilinkBar. It lives in the menu bar. Choose **Start Balancer**, then allow the helper once in
    **System Settings > General > Login Items**.
 
-## Command line
+## 💻 Command line
 
 The same engine ships as a CLI (build it from source for now):
 
@@ -90,7 +90,7 @@ sudo multilink run --policy least-latency --config multilink.toml
 All settings are optional. See [`multilink.example.toml`](multilink.example.toml) for weights,
 pins, the health-check target and more.
 
-## Build from source
+## 🛠️ Build from source
 
 You need stable Rust, plus the Xcode command line tools for the macOS app.
 
@@ -103,6 +103,6 @@ sh scripts/build-windows.sh      # Windows (or scripts/build-windows.ps1)
 
 Linux and Windows builds pass CI but aren't released yet.
 
-## License
+## 📄 License
 
 [MIT](LICENSE)
