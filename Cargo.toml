@@ -1,6 +1,6 @@
 [package]
 name = "multilink"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.4"
 edition = "2024"
 description = "Balance traffic across multiple internet links"
 license = "MIT"
