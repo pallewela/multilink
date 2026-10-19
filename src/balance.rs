@@ -115,6 +115,7 @@ mod tests {
             index: 0,
             ipv4: [0, 0, 0, 0].into(),
             gateway: None,
+            gateway6: None,
             rtt: ms.map(Duration::from_millis),
         }
     }

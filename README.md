@@ -42,9 +42,16 @@ a virtual network device. A userspace network stack turns packets back into conn
 each new connection is dialed out through a socket bound to the chosen link. The routes are
 removed when multilink stops.
 
+IPv6 works the same way (`::/1` and `8000::/1`) while at least one link passes the IPv6 health
+check, and IPv6 connections only use links that pass it. With no working IPv6 link, IPv6 is
+left to the system. Set `probe6 = "off"` to never capture IPv6. On macOS, apps only look up
+IPv6 addresses when the primary network (the top one in System Settings > Network) has IPv6. If
+the primary network is IPv4 only, apps stay on IPv4 even though other links have IPv6.
+
 ⚠️ **What it isn't:** bonding. A single TCP stream, like one large file download over one
 connection, is still capped by the link it lands on. Combining one stream across links needs a
-relay server, and that's out of scope. IPv6 and ICMP (ping) are not balanced yet.
+relay server, and that's out of scope. ICMP (ping) is not relayed yet, and a link needs IPv4 to
+be used at all.
 
 ## 🍎 Install on macOS
 

@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 /// One internet link: a physical interface we can bind outbound sockets to.
@@ -7,7 +7,8 @@ pub struct Link {
     pub name: String,
     pub index: u32,
     pub ipv4: Ipv4Addr,
-    pub gateway: Option<IpAddr>,
+    pub gateway: Option<Ipv4Addr>,
+    pub gateway6: Option<Ipv6Addr>,
     /// Latest health-probe round trip; None until probed.
     pub rtt: Option<Duration>,
 }
@@ -22,11 +23,15 @@ pub fn discover(only: &[String], exclude: &[String]) -> Vec<Link> {
             if only.is_empty() { i.gateway.is_some() && !exclude.contains(&i.name) } else { only.contains(&i.name) }
         })
         .filter_map(|i| {
-            let gateway = i
-                .gateway
-                .as_ref()
-                .and_then(|g| g.ipv4.first().map(|a| IpAddr::V4(*a)).or(g.ipv6.first().map(|a| IpAddr::V6(*a))));
-            Some(Link { ipv4: i.ipv4.first()?.addr(), name: i.name, index: i.index, gateway, rtt: None })
+            let gw = i.gateway.as_ref();
+            Some(Link {
+                ipv4: i.ipv4.first()?.addr(),
+                gateway: gw.and_then(|g| g.ipv4.first().copied()),
+                gateway6: gw.and_then(|g| g.ipv6.first().copied()),
+                name: i.name,
+                index: i.index,
+                rtt: None,
+            })
         })
         .collect()
 }

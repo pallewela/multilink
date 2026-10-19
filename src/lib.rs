@@ -47,7 +47,7 @@ enum Cmd {
     Links,
     /// Fetch the public IP through each link, to prove per-link routing works.
     Probe,
-    /// Capture all IPv4 traffic and balance it across links. Needs root/admin.
+    /// Capture all IPv4 and IPv6 traffic and balance it across links. Needs root/admin.
     Run {
         /// Balancing policy [default: sticky]
         #[arg(long, value_enum)]
@@ -58,6 +58,9 @@ enum Cmd {
         /// Health-check target, TCP-connected through each link every 2s [default: 1.1.1.1:443]
         #[arg(long)]
         probe: Option<std::net::SocketAddr>,
+        /// IPv6 health-check target, or "off" to leave IPv6 traffic alone [default: [2606:4700:4700::1111]:443]
+        #[arg(long, value_name = "ADDR|off")]
+        probe6: Option<String>,
         /// Status page address, or "off" [default: 127.0.0.1:7878]
         #[arg(long, value_name = "ADDR|off")]
         status: Option<String>,
@@ -115,7 +118,8 @@ async fn run(cli: Cli) -> i32 {
         Cmd::Links => {
             for l in &links {
                 let gw = l.gateway.map_or("-".into(), |g| g.to_string());
-                println!("{:<10} idx={:<3} ip={:<15} gw={gw}", l.name, l.index, l.ipv4);
+                let gw6 = l.gateway6.map_or("-".into(), |g| g.to_string());
+                println!("{:<10} idx={:<3} ip={:<15} gw={gw:<15} gw6={gw6}", l.name, l.index, l.ipv4);
             }
         }
         Cmd::Probe => {
@@ -131,8 +135,8 @@ async fn run(cli: Cli) -> i32 {
                 }
             }
         }
-        Cmd::Run { policy, stop_after, probe, status } => {
-            let fixed = match Fixed::new(&cfg, only, probe, status.as_deref()) {
+        Cmd::Run { policy, stop_after, probe, probe6, status } => {
+            let fixed = match Fixed::new(&cfg, only, probe, probe6.as_deref(), status.as_deref()) {
                 Ok(f) => f,
                 Err(e) => {
                     elog!("{e}");
@@ -156,23 +160,33 @@ struct Fixed {
     only: Vec<String>,
     exclude: Vec<String>,
     probe: std::net::SocketAddr,
+    /// None = IPv6 off: no IPv6 capture, IPv6 traffic takes the system's own route.
+    probe6: Option<std::net::SocketAddr>,
     status: Option<std::net::SocketAddr>,
 }
 
 impl Fixed {
-    /// `only`, `probe` and `status` come from the command line or the embedder when set.
+    /// `only`, `probe`, `probe6` and `status` come from the command line or the embedder when set.
     fn new(
         cfg: &config::Config,
         only: Vec<String>,
         probe: Option<std::net::SocketAddr>,
+        probe6: Option<&str>,
         status: Option<&str>,
     ) -> Result<Self, String> {
         let status = match status.or(cfg.status.as_deref()).unwrap_or("127.0.0.1:7878") {
             "off" => None,
             s => Some(s.parse().map_err(|_| format!("bad status address {s:?}: want IP:PORT or off"))?),
         };
+        let probe6 = match probe6.or(cfg.probe6.as_deref()).unwrap_or("[2606:4700:4700::1111]:443") {
+            "off" => None,
+            s => match s.parse::<std::net::SocketAddr>() {
+                Ok(a) if a.is_ipv6() => Some(a),
+                _ => return Err(format!("bad probe6 address {s:?}: want [IPv6]:PORT or off")),
+            },
+        };
         let probe = probe.or(cfg.probe).unwrap_or(([1, 1, 1, 1], 443).into());
-        Ok(Fixed { only, exclude: cfg.exclude.clone(), probe, status })
+        Ok(Fixed { only, exclude: cfg.exclude.clone(), probe, probe6, status })
     }
 
     /// Config names of the settings that differ from `other`.
@@ -181,6 +195,7 @@ impl Fixed {
             ("links", self.only != other.only),
             ("exclude", self.exclude != other.exclude),
             ("probe", self.probe != other.probe),
+            ("probe6", self.probe6 != other.probe6),
             ("status", self.status != other.status),
         ]
         .into_iter()
@@ -199,9 +214,15 @@ async fn relay(
     stop_after: Option<std::time::Duration>,
 ) -> i32 {
     let names: Vec<_> = links.iter().map(|l| l.name.as_str()).collect();
-    log!("links: {} | policy: {} | probe: {}", names.join(", "), balancer.policy_name(), fixed.probe);
-    let Fixed { only, exclude, probe, status } = fixed;
-    let opts = tunnel::Opts { only, exclude, probe, stop_after, status, signals, stop };
+    let probe6 = fixed.probe6.map_or("off".into(), |p| p.to_string());
+    log!(
+        "links: {} | policy: {} | probe: {} | probe6: {probe6}",
+        names.join(", "),
+        balancer.policy_name(),
+        fixed.probe
+    );
+    let Fixed { only, exclude, probe, probe6, status } = fixed;
+    let opts = tunnel::Opts { only, exclude, probe, probe6, stop_after, status, signals, stop };
     if let Err(e) = tunnel::run(links, balancer, opts).await {
         elog!("error: {e}");
         if e.kind() == std::io::ErrorKind::AlreadyExists {
@@ -229,7 +250,7 @@ pub struct Running {
 /// found before starting come back here; later ones end the run and show in [`Running::wait`].
 pub fn start(config_toml: &str, status: Option<&str>) -> Result<Running, String> {
     let cfg = config::parse(config_toml).map_err(|e| last_line(&e))?;
-    let fixed = Fixed::new(&cfg, cfg.links.clone(), None, status)?;
+    let fixed = Fixed::new(&cfg, cfg.links.clone(), None, None, status)?;
     let links = links::discover(&fixed.only, &fixed.exclude);
     if links.is_empty() {
         return Err("no usable links found".into());
@@ -265,7 +286,7 @@ impl Running {
     /// status). An invalid config changes nothing.
     pub fn reload(&self, config_toml: &str) -> Result<Vec<&'static str>, String> {
         let cfg = config::parse(config_toml).map_err(|e| last_line(&e))?;
-        let fixed = Fixed::new(&cfg, cfg.links.clone(), None, self.status_override.as_deref())?;
+        let fixed = Fixed::new(&cfg, cfg.links.clone(), None, None, self.status_override.as_deref())?;
         let policy = cfg.policy.unwrap_or_default();
         self.balancer.set(policy, cfg.weights, cfg.pin);
         let restart = self.fixed.changed(&fixed);
@@ -320,7 +341,7 @@ mod tests {
     fn running(toml: &str, status: Option<&str>) -> Running {
         let cfg = config::parse(toml).unwrap();
         Running {
-            fixed: Fixed::new(&cfg, cfg.links.clone(), None, status).unwrap(),
+            fixed: Fixed::new(&cfg, cfg.links.clone(), None, None, status).unwrap(),
             balancer: Arc::new(balance::Balancer::new(cfg.policy.unwrap_or_default(), cfg.weights, cfg.pin)),
             status_override: status.map(str::to_string),
             stop: Arc::default(),
@@ -334,8 +355,9 @@ mod tests {
         let r = running("policy = 'sticky'\nexclude = ['bridge0']", None);
         assert_eq!(r.reload("policy = 'round-robin'\nexclude = ['bridge0']"), Ok(vec![]));
         assert_eq!(r.balancer.policy_name(), "round-robin");
-        let restart = r.reload("policy = 'least-latency'\nprobe = '9.9.9.9:443'\nlinks = ['en0']").unwrap();
-        assert_eq!(restart, ["links", "exclude", "probe"]);
+        let restart =
+            r.reload("policy = 'least-latency'\nprobe = '9.9.9.9:443'\nprobe6 = 'off'\nlinks = ['en0']").unwrap();
+        assert_eq!(restart, ["links", "exclude", "probe", "probe6"]);
         assert_eq!(r.balancer.policy_name(), "least-latency");
         // an invalid config changes nothing
         assert!(r.reload("policy = 'fastest'").unwrap_err().contains("unknown variant"));
@@ -353,5 +375,13 @@ mod tests {
         let r = running("", None);
         assert_eq!(r.reload("status = 'off'"), Ok(vec!["status"]));
         assert!(r.reload("status = 'nowhere'").unwrap_err().contains("bad status address"));
+    }
+
+    #[test]
+    fn probe6_defaults_on_and_must_be_ipv6() {
+        let fixed = |toml: &str| Fixed::new(&config::parse(toml).unwrap(), vec![], None, None, None).map(|f| f.probe6);
+        assert_eq!(fixed(""), Ok(Some("[2606:4700:4700::1111]:443".parse().unwrap())));
+        assert_eq!(fixed("probe6 = 'off'"), Ok(None));
+        assert!(fixed("probe6 = '1.1.1.1:443'").unwrap_err().contains("want [IPv6]:PORT"));
     }
 }

@@ -11,6 +11,8 @@ use std::net::SocketAddr;
 pub struct Config {
     pub policy: Option<Policy>,
     pub probe: Option<SocketAddr>,
+    /// IPv6 health-check target ("[2606:4700:4700::1111]:443") or "off" to leave IPv6 alone.
+    pub probe6: Option<String>,
     /// Status page address ("127.0.0.1:7878") or "off".
     pub status: Option<String>,
     /// Use exactly these interfaces. Empty = auto-detect.
