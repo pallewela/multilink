@@ -50,6 +50,14 @@ relay server, and that's out of scope. IPv6 and ICMP (ping) are not balanced yet
 
 Requires macOS 13 or later on Apple silicon.
 
+With [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask pallewela/tap/multilink
+```
+
+Then skip to step 4. Or install by hand:
+
 1. Download `Multilink-<version>-macos.dmg` from
    [Releases](https://github.com/pallewela/multilink/releases) and check it against the
    `.sha256` file:
