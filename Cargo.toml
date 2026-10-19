@@ -1,7 +1,11 @@
 [package]
 name = "multilink"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
+description = "Balance traffic across multiple internet links"
+license = "MIT"
+repository = "https://github.com/pallewela/multilink"
+publish = false
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }

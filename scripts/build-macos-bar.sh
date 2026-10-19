@@ -11,6 +11,7 @@
 # The daemon runs code from this bundle as root, so install the app where only admins can
 # change it (/Applications) before relying on it.
 set -eu
+VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 APP=target/MultilinkBar.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Library/LaunchDaemons"
 cargo build --release   # builds the CLI and target/release/libmultilink.a
@@ -19,7 +20,7 @@ rm -f "$APP/Contents/MacOS/multilink"   # older builds bundled a separate binary
 swiftc -O -target "$(uname -m)-apple-macos13" -import-objc-header macos/multilink.h \
     -o "$APP/Contents/MacOS/MultilinkBar" macos/MultilinkBar.swift target/release/libmultilink.a \
     -framework CoreFoundation -framework SystemConfiguration -framework Foundation -lobjc -liconv
-cat > "$APP/Contents/Info.plist" <<'EOF'
+cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -28,7 +29,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleName</key><string>MultilinkBar</string>
     <key>CFBundleExecutable</key><string>MultilinkBar</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleShortVersionString</key><string>${VERSION%%-*}</string>
+    <key>CFBundleVersion</key><string>$VERSION</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <!-- Menu bar only: no Dock icon, no app menu. -->
     <key>LSUIElement</key><true/>
