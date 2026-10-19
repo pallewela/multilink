@@ -1,4 +1,6 @@
-# 🔀 multilink
+<img src="docs/icon.png" alt="multilink icon" width="128" align="right">
+
+# multilink
 
 **Use all your internet connections at once.**
 
