@@ -16,6 +16,7 @@ APP=target/Multilink.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Library/LaunchDaemons"
 cargo build --release   # builds the CLI and target/release/libmultilink.a
 rm -f "$APP/Contents/MacOS/multilink"   # older builds bundled a separate binary
+rm -f "$APP/Contents/Library/LaunchDaemons/com.multilink.bar.daemon.plist"   # old label
 # Frameworks and libraries per `cargo rustc --lib --crate-type staticlib -- --print native-static-libs`.
 swiftc -O -target "$(uname -m)-apple-macos13" -import-objc-header macos/multilink.h \
     -o "$APP/Contents/MacOS/Multilink" macos/Multilink.swift target/release/libmultilink.a \
@@ -41,15 +42,15 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </plist>
 EOF
 # Started on demand when the app connects; the daemon exits again when idle.
-cat > "$APP/Contents/Library/LaunchDaemons/com.multilink.bar.daemon.plist" <<'EOF'
+cat > "$APP/Contents/Library/LaunchDaemons/com.multilink.helper.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key><string>com.multilink.bar.daemon</string>
+    <key>Label</key><string>com.multilink.helper</string>
     <key>BundleProgram</key><string>Contents/MacOS/Multilink</string>
     <key>ProgramArguments</key><array><string>Multilink</string><string>daemon</string></array>
-    <key>MachServices</key><dict><key>com.multilink.bar.daemon</key><true/></dict>
+    <key>MachServices</key><dict><key>com.multilink.helper</key><true/></dict>
     <key>AssociatedBundleIdentifiers</key><array><string>com.multilink.bar</string></array>
 </dict>
 </plist>
