@@ -118,6 +118,8 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var ours = false
     var lastError: String?
     var firstTick = true
+    /// When the pending start was asked for; cleared once it settles.
+    var startedAt: Date?
     /// When the config was last sent to the running balancer.
     var appliedAt: Date?
     /// Settings changed while running that only a restart applies (from the daemon's reload).
@@ -207,8 +209,7 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// What decides which items the menu has. Row text (rates, latency) is not part of it.
     func layoutKey(_ rows: [(state: String?, text: String)]) -> String {
         let states = rows.map { $0.state ?? "-" }.joined(separator: ",")
-        return "\(states)|\(ours)|\(status != nil)|\(restartOffered)|\(lastError ?? "")|"
-            + "\(FileManager.default.fileExists(atPath: Paths.log.path))"
+        return "\(states)|\(ours)|\(status != nil)|\(restartOffered)|\(lastError ?? "")"
     }
 
     var restartOffered: Bool { ours && status != nil && needsRestart != nil }
@@ -246,7 +247,7 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if restartOffered, let needsRestart { add("Restart Balancer to Apply \(needsRestart)", #selector(restartBalancer)) }
         if let lastError { add(lastError, nil) }
         menu.addItem(settingsItem)
-        if FileManager.default.fileExists(atPath: Paths.log.path) { add("Open Log", #selector(openLog)) }
+        add("Open Log", #selector(openLog))
         menu.addItem(.separator())
         let open = NSMenuItem(title: "Open Status Page", action: #selector(openPage), keyEquivalent: "o")
         open.target = self
@@ -349,31 +350,50 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch configText() {
         case .success(let text): config = text
         case .failure(let p):
+            log(p.message)
             lastError = p.message
             return changed()
         }
         if let problem = daemonReady() {
+            log(problem)
             lastError = problem
             return changed()
         }
-        (ours, lastError, needsRestart, appliedAt) = (true, nil, nil, Date())
+        let at = Date()
+        (ours, lastError, needsRestart, appliedAt, startedAt) = (true, nil, nil, at, at)
+        log("starting the balancer with \(Paths.config.path)")
         daemon.start(config: config, status: "\(url.host ?? "127.0.0.1"):\(url.port ?? 7878)") { [weak self] error in
             guard let self, let error else { return }
-            (ours, lastError) = (false, "Couldn't start: \(error)")
+            log("couldn't start: \(error)")
+            (ours, lastError, startedAt) = (false, "Couldn't start: \(error)", nil)
             changed()
         }
+        // A daemon launchd can't spawn never answers: give up rather than show Starting… forever.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            MainActor.assumeIsolated { self?.startTimedOut(at) }
+        }
+        changed()
+    }
+
+    func startTimedOut(_ at: Date) {
+        guard startedAt == at, status == nil else { return }
+        log("the Multilink service didn't answer within 20s")
+        (ours, lastError, startedAt) = (false, "The Multilink service didn't answer (see log)", nil)
+        daemon.disconnect()
         changed()
     }
 
     /// Register the daemon on first use. nil when it can be reached, else what the user must do.
     func daemonReady() -> String? {
         let service = SMAppService.daemon(plistName: daemonPlist)
+        log("Multilink service status: \(service.status.rawValue)")
         if service.status == .enabled { return nil }
         if service.status != .requiresApproval {
             do {
                 try service.register()
                 return nil
-            } catch where service.status != .requiresApproval {
+            } catch where service.status != .requiresApproval
+                && (error as NSError).code != Int(kSMErrorLaunchDeniedByUser) {
                 return "Couldn't install the Multilink service: \(error.localizedDescription)"
             } catch {}
         }
@@ -402,7 +422,8 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func balancerStopped(_ code: Int) {
-        (ours, needsRestart) = (false, nil)
+        log("the balancer stopped (code \(code))")
+        (ours, needsRestart, startedAt) = (false, nil, nil)
         if code != 0 { lastError = "Balancer stopped with an error (see log)" }
         changed()
     }
@@ -412,7 +433,9 @@ final class Bar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func openLog() {
-        NSWorkspace.shared.open(Paths.log)
+        for f in [Paths.appLog, Paths.log] where FileManager.default.fileExists(atPath: f.path) {
+            NSWorkspace.shared.open(f)
+        }
     }
 
     @objc func openPage() {
@@ -430,7 +453,9 @@ struct Problem: Error {
 }
 
 /// launchd label and XPC service name of the daemon; the plist is in Contents/Library/LaunchDaemons.
-let daemonLabel = "com.multilink.bar.daemon"
+// Not com.multilink.bar.daemon: macOS kept that label's background item from MultilinkBar
+// builds (old executable path), so it could never spawn the renamed app.
+let daemonLabel = "com.multilink.helper"
 let daemonPlist = daemonLabel + ".plist"
 
 /// What the app may ask the daemon. Arguments are plain data that the daemon checks itself.
@@ -491,6 +516,11 @@ final class DaemonClient: NSObject, AppCalls {
         call({ _ in reply(0) }) { $0.stop { c in Task { @MainActor in reply(c) } } }
     }
 
+    /// Drop the connection (say, to a daemon that never answered); the next call makes a new one.
+    func disconnect() {
+        connection?.invalidate()
+    }
+
     private func call(_ failed: @escaping @MainActor (String) -> Void, _ body: (DaemonCalls) -> Void) {
         guard let requirement = sameCodeRequirement() else {
             return failed("Multilink is not code signed")
@@ -529,7 +559,7 @@ final class DaemonClient: NSObject, AppCalls {
 final class Daemon: NSObject, NSXPCListenerDelegate, DaemonCalls, @unchecked Sendable {
     let requirement: String
     /// Every field below is only touched on this queue.
-    let queue = DispatchQueue(label: "com.multilink.bar.daemon")
+    let queue = DispatchQueue(label: daemonLabel)
     var running: OpaquePointer?
     var owner: NSXPCConnection?
     var stopReplies: [(Int) -> Void] = []
@@ -626,7 +656,7 @@ func take(_ s: UnsafeMutablePointer<CChar>?) -> String? {
     return String(cString: s)
 }
 
-/// A daemon log line, timestamped like the library's.
+/// A log line, timestamped like the library's (the daemon's to /var/log, the app's to ~/Library/Logs).
 func log(_ text: String) {
     let f = DateFormatter()
     f.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -667,6 +697,8 @@ enum Paths {
     static let support = home.appending(path: "Library/Application Support/Multilink")
     /// Written by the daemon as root.
     static let log = URL(fileURLWithPath: "/var/log/multilink.log")
+    /// Written by the app: what happens before the daemon answers.
+    static let appLog = home.appending(path: "Library/Logs/Multilink.log")
     static var config: URL {
         UserDefaults.standard.string(forKey: "configPath").map { URL(fileURLWithPath: $0) }
             ?? support.appending(path: "multilink.toml")
@@ -844,6 +876,15 @@ guard getuid() != 0 else {
 
 // Builds named MultilinkBar kept their files here; never overwrites an existing folder.
 try? FileManager.default.moveItem(at: Paths.home.appending(path: "Library/Application Support/MultilinkBar"), to: Paths.support)
+
+// The app's own log, for what happens before the daemon answers.
+let appLog = open(Paths.appLog.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o644)
+if appLog >= 0 {
+    dup2(appLog, STDOUT_FILENO)
+    dup2(appLog, STDERR_FILENO)
+    close(appLog)
+}
+log("Multilink \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?") started")
 
 // Top-level code runs on the main thread.
 MainActor.assumeIsolated {

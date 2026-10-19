@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "multilink"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "chrono",
  "clap",
