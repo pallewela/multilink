@@ -26,6 +26,8 @@ pub struct LinkView {
     pub gateway: Option<String>,
     pub up: bool,
     pub rtt_ms: Option<f64>,
+    /// Passes the IPv6 probe; None = IPv6 off.
+    pub up6: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -55,7 +57,7 @@ fn status_json(s: &Shared) -> String {
         .map(|v| Row { totals: totals.remove(&v.name).unwrap_or_default(), view: v.clone(), present: true })
         .collect();
     rows.extend(totals.into_iter().map(|(name, totals)| Row {
-        view: LinkView { name, ipv4: String::new(), gateway: None, up: false, rtt_ms: None },
+        view: LinkView { name, ipv4: String::new(), gateway: None, up: false, rtt_ms: None, up6: None },
         totals,
         present: false,
     }));
@@ -165,8 +167,14 @@ mod tests {
         let stats = Arc::new(Stats::default());
         let _a = stats.open("en0");
         let _b = stats.open("en9");
-        let view =
-            LinkView { name: "en0".into(), ipv4: "192.168.1.13".into(), gateway: None, up: true, rtt_ms: Some(5.0) };
+        let view = LinkView {
+            name: "en0".into(),
+            ipv4: "192.168.1.13".into(),
+            gateway: None,
+            up: true,
+            rtt_ms: Some(5.0),
+            up6: Some(false),
+        };
         let shared = Shared {
             stats,
             links: RwLock::new(vec![view]),

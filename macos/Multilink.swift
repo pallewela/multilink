@@ -749,6 +749,8 @@ policy = "sticky"
 
 # Health check: TCP connect through each link every 2 seconds.
 # probe = "1.1.1.1:443"
+# The same over IPv6; "off" leaves IPv6 traffic to the system:
+# probe6 = "[2606:4700:4700::1111]:443"
 
 # Use exactly these interfaces instead of auto-detecting:
 # links = ["en0", "en9"]

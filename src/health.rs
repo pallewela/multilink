@@ -67,7 +67,7 @@ mod tests {
     use super::*;
 
     fn link(name: &str) -> Link {
-        Link { name: name.into(), index: 0, ipv4: [0, 0, 0, 0].into(), gateway: None, rtt: None }
+        Link { name: name.into(), index: 0, ipv4: [0, 0, 0, 0].into(), gateway: None, gateway6: None, rtt: None }
     }
 
     /// Up link names, then events.

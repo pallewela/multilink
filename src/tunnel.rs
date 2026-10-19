@@ -4,7 +4,7 @@ use crate::status::{self, LinkView, Shared};
 use crate::{balance::Balancer, dial, links::Link};
 use ipstack::{IpStack, IpStackConfig, IpStackStream, IpStackTcpStream, IpStackUdpStream};
 use route_manager::{Route, RouteManager};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll, ready};
@@ -14,14 +14,25 @@ use tokio::time::timeout;
 
 const MTU: u16 = 1500;
 const TUN_ADDR: Ipv4Addr = Ipv4Addr::new(10, 255, 255, 1);
+/// Unique local (fc00::/7): never routed on the internet.
+const TUN_ADDR6: Ipv6Addr = Ipv6Addr::new(0xfdfe, 0x6d6c, 0, 0, 0, 0, 0, 1);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub type Links = Arc<RwLock<Vec<Link>>>;
+/// The links new flows may use, per address family.
+#[derive(Default)]
+pub struct Usable {
+    v4: Vec<Link>,
+    v6: Vec<Link>,
+}
+
+pub type Links = Arc<RwLock<Usable>>;
 
 pub struct Opts {
     pub only: Vec<String>,
     pub exclude: Vec<String>,
     pub probe: SocketAddr,
+    /// None = leave IPv6 alone.
+    pub probe6: Option<SocketAddr>,
     pub stop_after: Option<Duration>,
     /// Where to serve the status page; None = off.
     pub status: Option<SocketAddr>,
@@ -35,7 +46,11 @@ pub struct Opts {
 /// out of a healthy, balanced link until stopped.
 pub async fn run(links: Vec<Link>, balancer: Arc<Balancer>, opts: Opts) -> io::Result<()> {
     raise_fd_limit();
-    let dev = tun_rs::DeviceBuilder::new().ipv4(TUN_ADDR, 30, None).mtu(MTU).build_async()?;
+    let mut builder = tun_rs::DeviceBuilder::new().ipv4(TUN_ADDR, 30, None).mtu(MTU);
+    if opts.probe6.is_some() {
+        builder = builder.ipv6(TUN_ADDR6, 64);
+    }
+    let dev = builder.build_async()?;
     let idx = dev.if_index()?;
     let mut cfg = IpStackConfig::default();
     cfg.mtu(MTU).map_err(io::Error::other)?;
@@ -53,7 +68,7 @@ pub async fn run(links: Vec<Link>, balancer: Arc<Balancer>, opts: Opts) -> io::R
         balancer: balancer.clone(),
         started: std::time::Instant::now(),
     });
-    let links: Links = Arc::new(RwLock::new(links));
+    let links: Links = Arc::new(RwLock::new(Usable { v4: links, v6: Vec::new() }));
     // A status page that can't start (port taken) is worth a warning, not stopping the tunnel.
     let status_page = async {
         if let Some(addr) = opts.status
@@ -90,10 +105,11 @@ pub async fn run(links: Vec<Link>, balancer: Arc<Balancer>, opts: Opts) -> io::R
 
 const PROBE_EVERY: Duration = Duration::from_secs(2);
 
-/// Every PROBE_EVERY: re-discover links, give new ones a scoped route, probe them all and
-/// publish the healthy set to the relays and the status page. Stats line every third round.
+/// Every PROBE_EVERY: re-discover links, give new ones a scoped route, probe them all over
+/// IPv4 and IPv6 and publish the healthy sets to the relays and the status page. IPv6 is
+/// captured only while some link passes the IPv6 probe. Stats line every third round.
 async fn monitor(links: &Links, opts: &Opts, routes: &mut RouteGuard, shared: &Shared) {
-    let mut health = Health::default();
+    let (mut health, mut health6) = (Health::default(), Health::default());
     let mut tick = tokio::time::interval(PROBE_EVERY);
     let (mut prev, mut prev_at) = (shared.stats.snapshot(), std::time::Instant::now());
     let mut n = 0u64;
@@ -101,10 +117,19 @@ async fn monitor(links: &Links, opts: &Opts, routes: &mut RouteGuard, shared: &S
         tick.tick().await;
         let found = crate::links::discover(&opts.only, &opts.exclude);
         routes.ensure_scoped(&found);
-        let probes = health::probe_all(&found, opts.probe).await;
+        let (probes, probes6) = tokio::join!(health::probe_all(&found, opts.probe), async {
+            match opts.probe6 {
+                Some(p) => health::probe_all(&found, p).await,
+                None => Vec::new(),
+            }
+        });
         let (up, events) = health.update(&probes);
+        let (up6, events6) = health6.update(&probes6);
         for e in events {
             log!("{e}");
+        }
+        for e in events6 {
+            log!("ipv6 {e}");
         }
         let mut views: Vec<_> = probes
             .iter()
@@ -114,13 +139,17 @@ async fn monitor(links: &Links, opts: &Opts, routes: &mut RouteGuard, shared: &S
                 gateway: l.gateway.map(|g| g.to_string()),
                 up: up.iter().any(|u| u.name == l.name),
                 rtt_ms: rtt.map(|d| d.as_secs_f64() * 1e3),
+                up6: opts.probe6.map(|_| up6.iter().any(|u| u.name == l.name)),
             })
             .collect();
         views.sort_by(|a, b| a.name.cmp(&b.name));
         *shared.links.write().unwrap() = views;
+        let capture6 = !up6.is_empty();
         // Probe target unreachable everywhere (blocked, or down itself): don't black-hole
         // all traffic on its say-so; keep using every link and let per-flow failover sort it out.
-        *links.write().unwrap() = if up.is_empty() { found } else { up };
+        // IPv6 needs no such fallback: without a healthy IPv6 link it is not captured at all.
+        *links.write().unwrap() = Usable { v4: if up.is_empty() { found } else { up }, v6: up6 };
+        routes.capture6(capture6);
         if n % 3 == 2 {
             let now = shared.stats.snapshot();
             log!("{}", stats::line(&now, &prev, prev_at.elapsed()));
@@ -158,7 +187,9 @@ async fn shutdown_signal() {
 
 /// Links to try for `dst`: the balancer's pick first, then the rest as failover.
 fn ordered(links: &Links, b: &Balancer, dst: SocketAddr) -> Vec<Link> {
-    let mut all = links.read().unwrap().clone();
+    let usable = links.read().unwrap();
+    let mut all = if dst.is_ipv4() { usable.v4.clone() } else { usable.v6.clone() };
+    drop(usable);
     if let Some(first) = b.pick(dst, &all).map(|l| l.name.clone()) {
         all.sort_by_key(|l| l.name != first);
     }
@@ -218,7 +249,9 @@ async fn relay_udp(mut udp: IpStackUdpStream, links: Links, b: Arc<Balancer>, st
 /// The /1 routes vanish with the TUN even on a crash. The scoped defaults (macOS) do not; see PLAN.md.
 struct RouteGuard {
     rm: RouteManager,
+    tun_index: u32,
     capture: Vec<Route>,
+    capture6: Vec<Route>,
     /// (interface index, gateway) of scoped defaults we added.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     scoped: Vec<(u32, IpAddr)>,
@@ -226,17 +259,47 @@ struct RouteGuard {
 
 impl RouteGuard {
     fn new() -> io::Result<Self> {
-        Ok(RouteGuard { rm: RouteManager::new()?, capture: Vec::new(), scoped: Vec::new() })
+        Ok(RouteGuard {
+            rm: RouteManager::new()?,
+            tun_index: 0,
+            capture: Vec::new(),
+            capture6: Vec::new(),
+            scoped: Vec::new(),
+        })
     }
 
-    /// The two /1 routes into the TUN.
+    /// The two IPv4 /1 routes into the TUN.
     fn capture(&mut self, tun_index: u32) -> io::Result<()> {
+        self.tun_index = tun_index;
         for a in [0, 128] {
             let r = Route::new(IpAddr::V4(Ipv4Addr::new(a, 0, 0, 0)), 1).with_if_index(tun_index);
             self.rm.add(&r)?; // on error, drop removes whatever got added
             self.capture.push(r);
         }
         Ok(())
+    }
+
+    /// Add or remove the two IPv6 /1 routes (::/1, 8000::/1) into the TUN.
+    fn capture6(&mut self, on: bool) {
+        if on == !self.capture6.is_empty() {
+            return;
+        }
+        if on {
+            for a in [0, 0x8000] {
+                let r = Route::new(IpAddr::V6(Ipv6Addr::new(a, 0, 0, 0, 0, 0, 0, 0)), 1).with_if_index(self.tun_index);
+                match self.rm.add(&r) {
+                    Ok(()) => self.capture6.push(r),
+                    Err(e) => elog!("ipv6 capture route {r:?}: {e}"),
+                }
+            }
+        } else {
+            for r in self.capture6.drain(..) {
+                if let Err(e) = self.rm.delete(&r) {
+                    elog!("ipv6 route cleanup {r:?}: {e}");
+                }
+            }
+        }
+        log!("ipv6 capture {}", if on { "on" } else { "off (no link passes the ipv6 probe)" });
     }
 
     /// macOS: a socket bound to an interface (IP_BOUND_IF) whose lookup lands on another
@@ -247,13 +310,14 @@ impl RouteGuard {
     #[cfg(target_os = "macos")]
     fn ensure_scoped(&mut self, links: &[Link]) {
         for l in links {
-            // IPv4 routes only; netdev falls back to an IPv6 gateway when a link has no IPv4 default.
-            let Some(gw @ IpAddr::V4(_)) = l.gateway else { continue };
-            match self.rm.add(&scoped_default(l.index, gw)) {
-                Ok(()) if !self.scoped.contains(&(l.index, gw)) => self.scoped.push((l.index, gw)),
-                Ok(()) => {}
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-                Err(e) => elog!("scoped default for {}: {e}", l.name),
+            let v6 = l.gateway6.map(|g| IpAddr::V6(embed_scope(g, l.index)));
+            for gw in l.gateway.map(IpAddr::V4).into_iter().chain(v6) {
+                match self.rm.add(&scoped_default(l.index, gw)) {
+                    Ok(()) if !self.scoped.contains(&(l.index, gw)) => self.scoped.push((l.index, gw)),
+                    Ok(()) => {}
+                    Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                    Err(e) => elog!("scoped default {gw} for {}: {e}", l.name),
+                }
             }
         }
     }
@@ -262,25 +326,39 @@ impl RouteGuard {
     fn ensure_scoped(&mut self, _links: &[Link]) {}
 }
 
-/// Interfaces holding an unscoped IPv4 default route.
+/// Interfaces holding an unscoped default route of the given family.
 #[cfg(target_os = "macos")]
-fn primary_v4_indexes(rm: &mut RouteManager) -> Vec<u32> {
+fn primary_indexes(rm: &mut RouteManager, v4: bool) -> Vec<u32> {
     rm.list()
         .unwrap_or_default()
         .iter()
-        .filter(|r| r.destination().is_ipv4() && r.prefix() == 0 && !r.if_scope())
+        .filter(|r| r.destination().is_ipv4() == v4 && r.prefix() == 0 && !r.if_scope())
         .filter_map(|r| r.if_index())
         .collect()
 }
 
 #[cfg(target_os = "macos")]
 fn scoped_default(index: u32, gw: IpAddr) -> Route {
-    Route::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0).with_gateway(gw).with_if_index(index).with_if_scope(true)
+    let any = if gw.is_ipv4() { IpAddr::V4(Ipv4Addr::UNSPECIFIED) } else { IpAddr::V6(Ipv6Addr::UNSPECIFIED) };
+    Route::new(any, 0).with_gateway(gw).with_if_index(index).with_if_scope(true)
+}
+
+/// IPv6 gateways are usually link-local (fe80::), which only mean something together with an
+/// interface. The BSD routing socket takes that interface embedded in the address's second
+/// 16 bits (KAME convention), as route(8) does.
+#[cfg(target_os = "macos")]
+fn embed_scope(gw: Ipv6Addr, index: u32) -> Ipv6Addr {
+    if !gw.is_unicast_link_local() {
+        return gw;
+    }
+    let mut s = gw.segments();
+    s[1] = index as u16;
+    s.into()
 }
 
 impl Drop for RouteGuard {
     fn drop(&mut self) {
-        for r in &self.capture {
+        for r in self.capture.iter().chain(&self.capture6) {
             if let Err(e) = self.rm.delete(r) {
                 elog!("route cleanup {r:?}: {e}");
             }
@@ -290,10 +368,10 @@ impl Drop for RouteGuard {
         // when the primary changed mid-run (Wi-Fi off, then on): deleting it there would leave
         // that link without a default route. So only remove ours from the current primary.
         #[cfg(target_os = "macos")]
-        let primary = primary_v4_indexes(&mut self.rm);
+        let (primary4, primary6) = (primary_indexes(&mut self.rm, true), primary_indexes(&mut self.rm, false));
         #[cfg(target_os = "macos")]
         for &(index, gw) in &self.scoped {
-            if primary.contains(&index) {
+            if if gw.is_ipv4() { &primary4 } else { &primary6 }.contains(&index) {
                 let _ = self.rm.delete(&scoped_default(index, gw));
             }
         }

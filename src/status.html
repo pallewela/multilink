@@ -217,6 +217,7 @@ function renderCards(links) {
         <dt>Flows</dt><dd>${l.active} active · ${l.flows} total</dd>
         <dt>Transferred</dt><dd>${human(l.bytes_down)} down · ${human(l.bytes_up)} up</dd>
         <dt>Address</dt><dd>${esc(l.ipv4 || "–")}${l.gateway ? " via " + esc(l.gateway) : ""}</dd>
+        ${l.up6 == null ? "" : `<dt>IPv6</dt><dd>${l.up6 ? "Up" : "Down"}</dd>`}
       </dl>
     </article>`;
   }).join("");
