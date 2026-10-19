@@ -83,7 +83,10 @@ mod tests {
         // new links start down: a failing newcomer never joins
         assert_eq!(round(&mut h, &[("a", true), ("b", false)]), (vec!["a".into()], vec!["link a up (5 ms)".into()]));
         // one blip tolerated
-        assert_eq!(round(&mut h, &[("a", false), ("b", true)]), (vec!["a".into(), "b".into()], vec!["link b up (5 ms)".into()]));
+        assert_eq!(
+            round(&mut h, &[("a", false), ("b", true)]),
+            (vec!["a".into(), "b".into()], vec!["link b up (5 ms)".into()])
+        );
         // second failure: down
         assert_eq!(round(&mut h, &[("a", false), ("b", true)]), (vec!["b".into()], vec!["link a down".into()]));
         // one success: back

@@ -37,7 +37,11 @@ pub unsafe extern "C" fn multilink_check_config(path: *const c_char) -> *mut c_c
 /// # Safety
 /// `config_toml` must be a valid string, `status` NULL or a valid string, `error` NULL or writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn multilink_start(config_toml: *const c_char, status: *const c_char, error: *mut *mut c_char) -> *mut Running {
+pub unsafe extern "C" fn multilink_start(
+    config_toml: *const c_char,
+    status: *const c_char,
+    error: *mut *mut c_char,
+) -> *mut Running {
     let toml = unsafe { CStr::from_ptr(config_toml) }.to_string_lossy().into_owned();
     let status = (!status.is_null()).then(|| unsafe { CStr::from_ptr(status) }.to_string_lossy().into_owned());
     match catch_unwind(|| crate::start(&toml, status.as_deref())).unwrap_or_else(|_| Err("internal error".into())) {
@@ -56,7 +60,11 @@ pub unsafe extern "C" fn multilink_start(config_toml: *const c_char, status: *co
 /// # Safety
 /// `r` must come from `multilink_start` and not be released; `message` NULL or writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn multilink_reload(r: *const Running, config_toml: *const c_char, message: *mut *mut c_char) -> c_int {
+pub unsafe extern "C" fn multilink_reload(
+    r: *const Running,
+    config_toml: *const c_char,
+    message: *mut *mut c_char,
+) -> c_int {
     let (r, toml) = (unsafe { &*r }, unsafe { CStr::from_ptr(config_toml) }.to_string_lossy().into_owned());
     match catch_unwind(AssertUnwindSafe(|| r.reload(&toml))).unwrap_or_else(|_| Err("internal error".into())) {
         Ok(restart) if restart.is_empty() => 0,

@@ -96,7 +96,8 @@ async fn monitor(links: &Links, opts: &Opts, routes: &mut RouteGuard, shared: &S
     let mut health = Health::default();
     let mut tick = tokio::time::interval(PROBE_EVERY);
     let (mut prev, mut prev_at) = (shared.stats.snapshot(), std::time::Instant::now());
-    for n in 0u64.. {
+    let mut n = 0u64;
+    loop {
         tick.tick().await;
         let found = crate::links::discover(&opts.only, &opts.exclude);
         routes.ensure_scoped(&found);
@@ -125,6 +126,7 @@ async fn monitor(links: &Links, opts: &Opts, routes: &mut RouteGuard, shared: &S
             log!("{}", stats::line(&now, &prev, prev_at.elapsed()));
             (prev, prev_at) = (now, std::time::Instant::now());
         }
+        n += 1;
     }
 }
 
@@ -345,4 +347,3 @@ fn raise_fd_limit() {
 
 #[cfg(not(unix))]
 fn raise_fd_limit() {}
-

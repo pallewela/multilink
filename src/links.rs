@@ -19,16 +19,13 @@ pub fn discover(only: &[String], exclude: &[String]) -> Vec<Link> {
         .into_iter()
         .filter(|i| i.is_up() && i.is_running() && !i.is_loopback() && !i.is_tun())
         .filter(|i| {
-            if only.is_empty() {
-                i.gateway.is_some() && !exclude.contains(&i.name)
-            } else {
-                only.contains(&i.name)
-            }
+            if only.is_empty() { i.gateway.is_some() && !exclude.contains(&i.name) } else { only.contains(&i.name) }
         })
         .filter_map(|i| {
-            let gateway = i.gateway.as_ref().and_then(|g| {
-                g.ipv4.first().map(|a| IpAddr::V4(*a)).or(g.ipv6.first().map(|a| IpAddr::V6(*a)))
-            });
+            let gateway = i
+                .gateway
+                .as_ref()
+                .and_then(|g| g.ipv4.first().map(|a| IpAddr::V4(*a)).or(g.ipv6.first().map(|a| IpAddr::V6(*a))));
             Some(Link { ipv4: i.ipv4.first()?.addr(), name: i.name, index: i.index, gateway, rtt: None })
         })
         .collect()
