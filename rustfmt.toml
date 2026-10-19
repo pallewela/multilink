@@ -1,0 +1,3 @@
+# Matches the existing wide-line style; keeps short constructs on one line.
+max_width = 120
+use_small_heuristics = "Max"

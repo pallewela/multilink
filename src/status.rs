@@ -1,10 +1,10 @@
 use crate::balance::Balancer;
 use crate::stats::{Stats, Totals};
 use serde::Serialize;
+use std::io;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use std::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -116,7 +116,8 @@ fn route(head: &str, addr: SocketAddr, json: impl FnOnce() -> String) -> (&'stat
 }
 
 fn header<'a>(head: &'a str, name: &str) -> Option<&'a str> {
-    head.lines().find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case(name)).map(|(_, v)| v.trim()))
+    head.lines()
+        .find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case(name)).map(|(_, v)| v.trim()))
 }
 
 /// On a loopback address, only answer requests addressed to a loopback name. This stops a
@@ -164,7 +165,8 @@ mod tests {
         let stats = Arc::new(Stats::default());
         let _a = stats.open("en0");
         let _b = stats.open("en9");
-        let view = LinkView { name: "en0".into(), ipv4: "192.168.1.13".into(), gateway: None, up: true, rtt_ms: Some(5.0) };
+        let view =
+            LinkView { name: "en0".into(), ipv4: "192.168.1.13".into(), gateway: None, up: true, rtt_ms: Some(5.0) };
         let shared = Shared {
             stats,
             links: RwLock::new(vec![view]),

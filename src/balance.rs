@@ -110,7 +110,13 @@ mod tests {
     use std::net::IpAddr;
 
     fn link(name: &str, ms: Option<u64>) -> Link {
-        Link { name: name.into(), index: 0, ipv4: [0, 0, 0, 0].into(), gateway: None, rtt: ms.map(Duration::from_millis) }
+        Link {
+            name: name.into(),
+            index: 0,
+            ipv4: [0, 0, 0, 0].into(),
+            gateway: None,
+            rtt: ms.map(Duration::from_millis),
+        }
     }
 
     fn dst(i: u32, port: u16) -> SocketAddr {

@@ -16,8 +16,8 @@ macro_rules! elog {
 
 mod balance;
 mod config;
-pub mod ffi;
 mod dial;
+pub mod ffi;
 mod health;
 mod links;
 mod stats;
@@ -161,7 +161,12 @@ struct Fixed {
 
 impl Fixed {
     /// `only`, `probe` and `status` come from the command line or the embedder when set.
-    fn new(cfg: &config::Config, only: Vec<String>, probe: Option<std::net::SocketAddr>, status: Option<&str>) -> Result<Self, String> {
+    fn new(
+        cfg: &config::Config,
+        only: Vec<String>,
+        probe: Option<std::net::SocketAddr>,
+        status: Option<&str>,
+    ) -> Result<Self, String> {
         let status = match status.or(cfg.status.as_deref()).unwrap_or("127.0.0.1:7878") {
             "off" => None,
             s => Some(s.parse().map_err(|_| format!("bad status address {s:?}: want IP:PORT or off"))?),
@@ -238,8 +243,10 @@ pub fn start(config_toml: &str, status: Option<&str>) -> Result<Running, String>
     let thread = std::thread::Builder::new()
         .name("multilink".into())
         .spawn(move || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rt.block_on(relay(links, b, opts, false, s, None))))
-                .unwrap_or(101)
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                rt.block_on(relay(links, b, opts, false, s, None))
+            }))
+            .unwrap_or(101)
         })
         .map_err(|e| format!("can't start the balancer thread: {e}"))?;
     Ok(Running {

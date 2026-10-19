@@ -27,14 +27,9 @@ fn bind_to(sock: &Socket, link: &Link, v4: bool) -> io::Result<()> {
     use std::os::windows::io::AsRawSocket;
     use windows_sys::Win32::Networking::WinSock::*;
     // IP_UNICAST_IF takes the index in network byte order; IPV6_UNICAST_IF in host order.
-    let (level, opt, val) = if v4 {
-        (IPPROTO_IP, IP_UNICAST_IF, link.index.to_be())
-    } else {
-        (IPPROTO_IPV6, IPV6_UNICAST_IF, link.index)
-    };
-    let rc = unsafe {
-        setsockopt(sock.as_raw_socket() as SOCKET, level, opt, &val as *const u32 as *const u8, 4)
-    };
+    let (level, opt, val) =
+        if v4 { (IPPROTO_IP, IP_UNICAST_IF, link.index.to_be()) } else { (IPPROTO_IPV6, IPV6_UNICAST_IF, link.index) };
+    let rc = unsafe { setsockopt(sock.as_raw_socket() as SOCKET, level, opt, &val as *const u32 as *const u8, 4) };
     if rc == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
 }
 
