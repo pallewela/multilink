@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Parser)]
-#[command(about = "Balance traffic across multiple internet links")]
+#[command(version, about = "Balance traffic across multiple internet links")]
 struct Cli {
     /// Use only these interfaces (repeatable). Default: auto-detect.
     #[arg(long = "link", global = true)]
